@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Semantic Paragraph Builder</title>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+<style>
+  :root {
+    --font-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --color-primary: #2563EB;
+    --color-success: #059669;
+    --color-danger: #DC2626;
+    --color-bg: #F3F4F6;
+    --color-card: #FFFFFF;
+    --color-text: #1F2937;
+    --color-border: #D1D5DB;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--color-bg); font-family: var(--font-sans); color: var(--color-text); min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 2rem 1rem; }
+  .container { background: var(--color-card); width: 100%; max-width: 900px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); padding: 2rem; position: relative; }
+  h1 { font-size: 1.5rem; margin-bottom: 0.5rem; text-align: center; }
+  p.subtitle { text-align: center; color: #6B7280; margin-bottom: 2rem; }
+
+  /* --- Buttons --- */
+  .btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.95rem; font-weight: 600; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+  .btn-primary { background: var(--color-primary); color: white; }
+  .btn-success { background: var(--color-success); color: white; }
+  .btn-danger { background: #FEF2F2; color: var(--color-danger); border: 1px solid #FCA5A5; }
+  .btn-danger:hover { background: #FEE2E2; }
+  .btn-outline { background: transparent; border: 2px solid var(--color-border); color: var(--color-text); }
+  .btn-outline:hover { border-color: var(--color-primary); color: var(--color-primary); }
+
+  /* --- Teacher Setup View --- */
+  #teacher-view { display: block; }
+  .section-title { font-size: 1.1rem; font-weight: bold; margin: 1.5rem 0 0.5rem 0; padding-bottom: 0.5rem; border-bottom: 2px solid var(--color-bg); }
+  
+  .title-input { width: 100%; padding: 10px; border: 1px solid var(--color-border); border-radius: 6px; font-family: inherit; font-size: 1.05rem; margin-bottom: 10px; }
+  
+  .builder-row { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 10px; background: #F9FAFB; padding: 10px; border-radius: 8px; border: 1px solid var(--color-border); }
+  .builder-row input[type="text"].part-input { flex: 2; padding: 8px; border: 1px solid var(--color-border); border-radius: 4px; font-family: inherit; font-size: 0.95rem; }
+  .builder-row input[type="text"].label-input { flex: 1; padding: 8px; border: 1px solid var(--color-border); border-radius: 4px; font-family: inherit; font-size: 0.9rem; }
+  
+  /* Color Picker Group */
+  .color-picker-group { display: flex; align-items: center; gap: 4px; }
+  .color-picker-group input[type="text"].hex-input { width: 75px; padding: 8px; border: 1px solid var(--color-border); border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-align: center; }
+  .color-picker-group input[type="color"] { width: 32px; height: 35px; padding: 0; border: 1px solid var(--color-border); border-radius: 4px; cursor: pointer; }
+  
+  .distractor-row { background: #FEF2F2; border-color: #FCA5A5; }
+  .teacher-controls { display: flex; justify-content: space-between; margin-top: 2rem; padding-top: 1rem; border-top: 2px solid var(--color-border); }
+
+  /* --- Student Game View --- */
+  #student-view { display: none; }
+  
+  /* Legend */
+  .legend-container { display: flex; flex-wrap: wrap; gap: 15px; background: #F9FAFB; padding: 15px; border-radius: 8px; border: 1px solid var(--color-border); margin-bottom: 1.5rem; justify-content: center; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 600; }
+  .legend-color { width: 20px; height: 20px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.1); }
+
+  /* Game Board Area */
+  .game-board { margin-bottom: 2rem; }
+  
+  /* The Paragraph Slots */
+  .slot-row { display: flex; gap: 12px; margin-bottom: 10px; align-items: stretch; min-height: 60px; }
+  .slot-label { 
+    flex: 0 0 160px; 
+    border: 1px solid rgba(0,0,0,0.1); 
+    border-radius: 8px; 
+    padding: 12px; 
+    font-weight: 600; 
+    font-size: 0.9rem; 
+    display: flex; 
+    align-items: center; 
+  }
+  .slot-dropzone {
+    flex: 1; background: #EFF6FF; border: 2px dashed #93C5FD; border-radius: 8px;
+    padding: 6px; display: flex; flex-direction: column; justify-content: center;
+  }
+  .slot-dropzone.has-item { border-style: solid; border-color: transparent; background: transparent; padding: 0;}
+
+  /* The Starting Pool */
+  .pool-title { font-size: 1rem; font-weight: bold; margin-bottom: 10px; color: #4B5563; }
+  #pool-zone {
+    background: #F9FAFB; border: 2px solid var(--color-border); border-radius: 8px;
+    padding: 15px; min-height: 120px; display: flex; flex-direction: column; gap: 10px;
+  }
+
+  /* Draggable Items */
+  .drag-item {
+    background: #FFFFFF; border: 2px solid #E5E7EB; border-radius: 8px;
+    padding: 12px 12px 12px 2.5rem; font-size: 1.05rem; line-height: 1.4;
+    cursor: grab; position: relative; transition: background-color 0.4s, border-color 0.4s;
+    width: 100%; margin: 0;
+  }
+  .drag-item:active { cursor: grabbing; }
+  .drag-item::before { content: '⋮⋮'; position: absolute; left: 0.8rem; top: 50%; transform: translateY(-50%); color: #9CA3AF; font-size: 1.2rem; font-weight: bold; }
+  
+  .sortable-ghost { opacity: 0.4; }
+  .sortable-drag { box-shadow: 0 10px 20px rgba(0,0,0,0.15); }
+  
+  .tick-mark { color: var(--color-success); font-weight: bold; margin-left: 8px; font-size: 1.1rem; }
+
+  .student-controls { display: flex; justify-content: space-between; align-items: center; border-top: 2px solid var(--color-border); padding-top: 1.5rem; margin-top: 2rem;}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <!-- TEACHER SETUP VIEW -->
+  <div id="teacher-view">
+    <h1>⚙️ Semantic Paragraph Builder</h1>
+    <p class="subtitle">Assign a semantic meaning and colour to each part. Add trick items to test comprehension.</p>
+    
+    <div class="section-title">Paragraph Details</div>
+    <input type="text" id="manual-title" class="title-input" placeholder="Enter paragraph title (e.g., Introduction, Art History Model)" aria-label="Enter paragraph title">
+
+    <div class="section-title">Correct Paragraph Sequence</div>
+    <div id="builder-container">
+      <!-- Rows generated by JS -->
+    </div>
+    <button class="btn btn-outline" style="margin-top: 10px;" onclick="addBuilderRow()" aria-label="Add a new correct part">+ Add Part</button>
+
+    <div class="section-title">Distractors (Trick Items)</div>
+    <div id="distractor-container">
+      <!-- Distractor rows generated by JS -->
+    </div>
+    <button class="btn btn-outline" style="margin-top: 10px;" onclick="addDistractorRow()" aria-label="Add a trick part">+ Add Trick Part</button>
+    
+    <div class="teacher-controls">
+      <div style="font-size: 0.85rem; color: #6B7280; max-width: 300px;">
+        💡 Tip: Use lighter/pastel colours so black text remains easy to read when revealed.
+      </div>
+      <button class="btn btn-primary" onclick="startGame()" style="font-size: 1.1rem; padding: 10px 24px;" aria-label="Start Game">Start Game 🚀</button>
+    </div>
+  </div>
+
+  <!-- STUDENT PLAY VIEW -->
+  <div id="student-view">
+    <h1 id="student-title">🧩 Paragraph Sequencer</h1>
+    <p class="subtitle">Drag the parts from the pool into the correct structural slots.</p>
+
+    <!-- Semantic Legend -->
+    <div id="legend-area" class="legend-container" aria-label="Colour Legend"></div>
+
+    <div class="game-board">
+      <!-- Paragraph Box (Slots with Labels) -->
+      <div id="paragraph-box" aria-label="Drop zones for paragraph parts"></div>
+    </div>
+
+    <!-- Starting Pool -->
+    <div class="pool-title">Part Pool (Drag from here)</div>
+    <div id="pool-zone" aria-label="Pool of available sentence parts"></div>
+
+    <div class="student-controls">
+      <button class="btn btn-outline" onclick="resetTeacher()" aria-label="Return to teacher setup">⚙️ Edit Setup</button>
+      <button class="btn btn-success" onclick="checkAnswer()" aria-label="Check your answer">✅ Check Answer</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR_qVYjge6yFN9mLytjck09G66BTF8bM5_PCrcoQ5G8z-ilwEJ3L-uYLOEqzf8hAPCAFRyV8fRR0Ho0/pub?gid=0&single=true&output=csv"; 
+
+
+  let gameData = []; 
+  let sortableInstances = []; 
+
+  // --- INITIAL SETUP & SHEET FETCHING ---
+  function init() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const gameId = urlParams.get('game');
+
+    if (gameId && SHEET_CSV_URL !== "PASTE_YOUR_LINK_HERE") {
+      loadGameFromSheet(gameId);
+    } else {
+      addBuilderRow('Ice melts when heat energy is applied.', '#D1FAE5', 'Topic Focus');
+      addBuilderRow('The heat causes the water molecules to vibrate faster.', '#FEF3C7', 'Explanation');
+      addBuilderRow('Eventually, they break their solid bonds and turn to liquid.', '#DBEAFE', 'Result');
+    }
+  }
+
+  // --- GOOGLE SHEET LOGIC ---
+  async function loadGameFromSheet(targetGameId) {
+    try {
+      document.getElementById('teacher-view').style.display = 'none';
+      document.body.insertAdjacentHTML('beforeend', '<div id="loading-text" style="text-align:center; margin-top: 2rem;">⏳ Loading your game from Google Sheets...</div>');
+
+      const response = await fetch(SHEET_CSV_URL);
+      const csvText = await response.text();
+      const rows = parseCSV(csvText);
+      
+      // Expected headers: Game_ID, Title, Type, Text, Colour, Label
+      const headers = rows[0].map(h => h.trim().toLowerCase());
+      const gameIdIdx = headers.indexOf('game_id');
+      const titleIdx = headers.indexOf('title');
+      const typeIdx = headers.indexOf('type');
+      const textIdx = headers.indexOf('text');
+      const colorIdx = headers.indexOf('colour');
+      const labelIdx = headers.indexOf('label');
+
+      if (gameIdIdx === -1) throw new Error("Missing Game_ID column");
+
+      document.getElementById('builder-container').innerHTML = '';
+      document.getElementById('distractor-container').innerHTML = '';
+      document.getElementById('manual-title').value = '';
+
+      let foundGame = false;
+
+      for (let i = 1; i < rows.length; i++) {
+        if (!rows[i] || rows[i].length < 2) continue;
+        const rowGameId = rows[i][gameIdIdx].trim();
+        
+        if (rowGameId === targetGameId) {
+          foundGame = true;
+          
+          // Grab the title from the sheet and put it in the teacher setup box
+          if (titleIdx !== -1 && rows[i][titleIdx] && document.getElementById('manual-title').value === '') {
+            document.getElementById('manual-title').value = rows[i][titleIdx].trim();
+          }
+
+          const type = rows[i][typeIdx] ? rows[i][typeIdx].trim().toLowerCase() : '';
+          const text = rows[i][textIdx] ? rows[i][textIdx].trim() : '';
+          const color = rows[i][colorIdx] ? rows[i][colorIdx].trim() : '#E5E7EB';
+          const label = rows[i][labelIdx] ? rows[i][labelIdx].trim() : '';
+
+          if (type === 'correct') {
+            addBuilderRow(text, color, label);
+          } else if (type === 'trick') {
+            addDistractorRowFromSheet(text);
+          }
+        }
+      }
+
+      document.getElementById('loading-text').remove();
+
+      if (foundGame) {
+        startGame(); 
+      } else {
+        alert("Oops! Game ID '" + targetGameId + "' was not found in the spreadsheet.");
+        resetTeacher();
+      }
+    } catch (e) {
+      console.error(e);
+      document.getElementById('loading-text')?.remove();
+      alert("Could not load from Google Sheets. Ensure your link is correct and ends in 'output=csv'");
+      resetTeacher();
+    }
+  }
+
+  function parseCSV(str) {
+    const arr = []; let quote = false; let col, c;
+    for (let row = col = c = 0; c < str.length; c++) {
+      let cc = str[c], nc = str[c+1];
+      arr[row] = arr[row] || []; arr[row][col] = arr[row][col] || '';
+      if (cc == '"' && quote && nc == '"') { arr[row][col] += cc; ++c; continue; }
+      if (cc == '"') { quote = !quote; continue; }
+      if (cc == ',' && !quote) { ++col; continue; }
+      if (cc == '\r' && nc == '\n' && !quote) { ++row; col = 0; ++c; continue; }
+      if (cc == '\n' && !quote) { ++row; col = 0; continue; }
+      if (cc == '\r' && !quote) { ++row; col = 0; continue; }
+      arr[row][col] += cc;
+    }
+    return arr;
+  }
+
+  // --- TEACHER BUILDER LOGIC ---
+  function addBuilderRow(text = '', color = '#E5E7EB', label = '') {
+    const container = document.getElementById('builder-container');
+    const div = document.createElement('div');
+    div.className = 'builder-row';
+    div.innerHTML = `
+      <input type="text" class="part-input" placeholder="Enter part..." value="${text}" aria-label="Enter paragraph part text">
+      <div class="color-picker-group">
+        <input type="text" class="hex-input" value="${color}" oninput="this.nextElementSibling.value = this.value || '#ffffff'" aria-label="Enter hex color code">
+        <input type="color" title="Pick semantic colour" value="${color}" oninput="this.previousElementSibling.value = this.value" aria-label="Select color from picker">
+      </div>
+      <input type="text" class="label-input" placeholder="e.g. Evidence" value="${label}" aria-label="Enter semantic label">
+      <button class="btn btn-danger" onclick="this.parentElement.remove()" aria-label="Remove this part">✖</button>
+    `;
+    container.appendChild(div);
+  }
+
+  function addDistractorRow() { addDistractorRowFromSheet(''); }
+  function addDistractorRowFromSheet(text = '') {
+    const container = document.getElementById('distractor-container');
+    const div = document.createElement('div');
+    div.className = 'builder-row distractor-row';
+    div.innerHTML = `
+      <input type="text" class="part-input distractor-input" placeholder="Enter a trick part..." value="${text}" aria-label="Enter trick part text">
+      <button class="btn btn-danger" onclick="this.parentElement.remove()" aria-label="Remove trick part">✖</button>
+    `;
+    container.appendChild(div);
+  }
+
+  // --- START GAME LOGIC ---
+  function startGame() {
+    gameData = [];
+    const buildRows = document.querySelectorAll('#builder-container .builder-row');
+    const distractorRows = document.querySelectorAll('#distractor-container .builder-row');
+    const customTitle = document.getElementById('manual-title').value.trim();
+
+    if (buildRows.length < 2) {
+      alert("Please add at least 2 correct parts to play.");
+      return;
+    }
+
+    // Apply the title dynamically
+    const titleElement = document.getElementById('student-title');
+    titleElement.innerHTML = customTitle ? '🧩 ' + customTitle : '🧩 Paragraph Sequencer';
+
+    let pool = [];
+
+    buildRows.forEach((row, index) => {
+      const text = row.querySelector('.part-input').value.trim();
+      const color = row.querySelector('input[type="color"]').value;
+      const label = row.querySelector('.label-input').value.trim();
+      if (text) {
+        const item = { id: index, text: text, color: color, label: label, isDistractor: false };
+        gameData.push(item);
+        pool.push(item);
+      }
+    });
+
+    distractorRows.forEach((row, index) => {
+      const text = row.querySelector('.distractor-input').value.trim();
+      if (text) pool.push({ id: -1, text: text, isDistractor: true });
+    });
+
+    const legendContainer = document.getElementById('legend-area');
+    legendContainer.innerHTML = '';
+    gameData.forEach(item => {
+      if(item.label) {
+        legendContainer.innerHTML += `
+          <div class="legend-item" aria-label="Legend item: ${item.label}">
+            <div class="legend-color" style="background-color: ${item.color};" aria-hidden="true"></div>
+            <span>${item.label}</span>
+          </div>`;
+      }
+    });
+
+    const paragraphBox = document.getElementById('paragraph-box');
+    paragraphBox.innerHTML = '';
+    gameData.forEach(item => {
+      paragraphBox.innerHTML += `
+        <div class="slot-row">
+          <div class="slot-label" style="background-color: ${item.color};" aria-label="Slot for ${item.label}">${item.label}</div>
+          <div class="slot-dropzone" data-target-id="${item.id}" data-color="${item.color}" aria-label="Drop zone"></div>
+        </div>
+      `;
+    });
+
+    const poolZone = document.getElementById('pool-zone');
+    poolZone.innerHTML = '';
+    shuffleArray(pool);
+    pool.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'drag-item';
+      div.dataset.id = item.id;
+      div.tabIndex = 0; 
+      div.innerHTML = `<span class="item-text">${item.text}</span>`;
+      poolZone.appendChild(div);
+    });
+
+    sortableInstances.forEach(inst => inst.destroy());
+    sortableInstances = [];
+
+    const sortableOptions = {
+      group: 'shared', animation: 150, ghostClass: 'sortable-ghost', dragClass: 'sortable-drag',
+      onStart: clearFeedback,
+    };
+
+    sortableInstances.push(new Sortable(poolZone, sortableOptions));
+    document.querySelectorAll('.slot-dropzone').forEach(dropzone => {
+      sortableInstances.push(new Sortable(dropzone, {
+        ...sortableOptions,
+        onAdd: function (evt) {
+          const currentDropzone = evt.to;
+          currentDropzone.classList.add('has-item');
+          if (currentDropzone.children.length > 1) {
+            const existingItem = Array.from(currentDropzone.children).find(child => child !== evt.item);
+            if (existingItem) document.getElementById('pool-zone').appendChild(existingItem);
+          }
+        },
+        onRemove: function(evt) {
+          if(evt.from.children.length === 0) evt.from.classList.remove('has-item');
+        }
+      }));
+    });
+
+    document.getElementById('teacher-view').style.display = 'none';
+    document.getElementById('student-view').style.display = 'block';
+  }
+
+  // --- CHECKING LOGIC ---
+  function checkAnswer() {
+    let allPerfect = true;
+    const slots = document.querySelectorAll('.slot-dropzone');
+
+    document.querySelectorAll('.tick-mark').forEach(el => el.remove());
+
+    slots.forEach(slot => {
+      const targetId = parseInt(slot.dataset.targetId);
+      const childItem = slot.children[0];
+
+      if (childItem) {
+        const itemId = parseInt(childItem.dataset.id);
+        if (itemId === targetId) {
+          const tick = document.createElement('span');
+          tick.className = 'tick-mark'; tick.textContent = '✔️'; tick.setAttribute('aria-label', 'Correct');
+          childItem.appendChild(tick);
+        } else allPerfect = false;
+      } else allPerfect = false;
+    });
+
+    if (allPerfect) {
+      slots.forEach(slot => {
+        const childItem = slot.children[0];
+        const designatedColor = slot.dataset.color;
+        childItem.style.backgroundColor = designatedColor;
+        childItem.style.borderColor = designatedColor;
+      });
+      setTimeout(() => alert("🎉 Perfect! You've sequenced the parts structurally!"), 150);
+    }
+  }
+
+  function clearFeedback() {
+    document.querySelectorAll('.tick-mark').forEach(el => el.remove());
+    document.querySelectorAll('.drag-item').forEach(item => {
+      item.style.backgroundColor = '#FFFFFF'; item.style.borderColor = '#E5E7EB';
+    });
+  }
+
+  function resetTeacher() {
+    document.getElementById('student-view').style.display = 'none';
+    document.getElementById('teacher-view').style.display = 'block';
+  }
+
+  function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+  }
+
+  init();
+</script>
+
+</body>
+</html>

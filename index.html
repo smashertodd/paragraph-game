@@ -139,7 +139,7 @@
   <!-- STUDENT PLAY VIEW -->
   <div id="student-view">
     <h1 id="student-title">🧩 Paragraph Sequencer</h1>
-    <p class="subtitle">Drag the parts from the pool into the correct structural slots.</p>
+    <p id="student-subtitle" class="subtitle">Drag the parts from the pool into the correct structural slots.</p>
 
     <!-- Semantic Legend -->
     <div id="legend-area" class="legend-container" aria-label="Colour Legend"></div>
@@ -154,8 +154,8 @@
     <div id="pool-zone" aria-label="Pool of available sentence parts"></div>
 
     <div class="student-controls">
-      <button class="btn btn-outline" onclick="resetTeacher()" aria-label="Return to teacher setup">⚙️ Edit Setup</button>
-      <button class="btn btn-success" onclick="checkAnswer()" aria-label="Check your answer">✅ Check Answer</button>
+      <button id="edit-setup-btn" class="btn btn-outline" onclick="resetTeacher()" aria-label="Return to teacher setup">⚙️ Edit Setup</button>
+      <button class="btn btn-success" onclick="checkAnswer()" aria-label="Check your answer" style="margin-left: auto;">✅ Check Answer</button>
     </div>
   </div>
 
@@ -163,8 +163,6 @@
 
 <script>
   const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR_qVYjge6yFN9mLytjck09G66BTF8bM5_PCrcoQ5G8z-ilwEJ3L-uYLOEqzf8hAPCAFRyV8fRR0Ho0/pub?gid=0&single=true&output=csv"; 
-
-
   let gameData = []; 
   let sortableInstances = []; 
 
@@ -192,7 +190,6 @@
       const csvText = await response.text();
       const rows = parseCSV(csvText);
       
-      // Expected headers: Game_ID, Title, Type, Text, Colour, Label
       const headers = rows[0].map(h => h.trim().toLowerCase());
       const gameIdIdx = headers.indexOf('game_id');
       const titleIdx = headers.indexOf('title');
@@ -216,7 +213,6 @@
         if (rowGameId === targetGameId) {
           foundGame = true;
           
-          // Grab the title from the sheet and put it in the teacher setup box
           if (titleIdx !== -1 && rows[i][titleIdx] && document.getElementById('manual-title').value === '') {
             document.getElementById('manual-title').value = rows[i][titleIdx].trim();
           }
@@ -307,7 +303,6 @@
       return;
     }
 
-    // Apply the title dynamically
     const titleElement = document.getElementById('student-title');
     titleElement.innerHTML = customTitle ? '🧩 ' + customTitle : '🧩 Paragraph Sequencer';
 
@@ -328,6 +323,23 @@
       const text = row.querySelector('.distractor-input').value.trim();
       if (text) pool.push({ id: -1, text: text, isDistractor: true });
     });
+
+    // Handle dynamic subtitle warning if a distractor exists
+    const hasDistractors = pool.some(item => item.isDistractor);
+    const subtitleEl = document.getElementById('student-subtitle');
+    if (hasDistractors) {
+      subtitleEl.innerHTML = "Drag the parts from the pool into the correct structural slots. <strong>Watch out, there is a trick part you won't need!</strong>";
+    } else {
+      subtitleEl.innerHTML = "Drag the parts from the pool into the correct structural slots.";
+    }
+
+    // Hide the 'Edit Setup' button if loaded via a Google Sheet link
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('game')) {
+      document.getElementById('edit-setup-btn').style.display = 'none';
+    } else {
+      document.getElementById('edit-setup-btn').style.display = 'inline-flex';
+    }
 
     const legendContainer = document.getElementById('legend-area');
     legendContainer.innerHTML = '';

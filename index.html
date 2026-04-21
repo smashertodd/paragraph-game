@@ -33,6 +33,12 @@
   .btn-outline { background: transparent; border: 2px solid var(--color-border); color: var(--color-text); }
   .btn-outline:hover { border-color: var(--color-primary); color: var(--color-primary); }
 
+  /* --- Modals (Name Input) --- */
+  #name-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+  .modal-content { background: white; padding: 2.5rem; border-radius: 12px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.2); max-width: 400px; width: 90%; }
+  .modal-content input { width: 100%; padding: 12px; margin: 15px 0; border: 2px solid var(--color-border); border-radius: 6px; font-size: 1.1rem; text-align: center;}
+  .modal-content input:focus { outline: none; border-color: var(--color-primary); }
+
   /* --- Teacher Setup View --- */
   #teacher-view { display: block; }
   .section-title { font-size: 1.1rem; font-weight: bold; margin: 1.5rem 0 0.5rem 0; padding-bottom: 0.5rem; border-bottom: 2px solid var(--color-bg); }
@@ -107,6 +113,16 @@
 </head>
 <body>
 
+<!-- STUDENT NAME OVERLAY -->
+<div id="name-modal">
+  <div class="modal-content">
+    <h2>Kia ora! 👋</h2>
+    <p style="color: #6B7280; margin-top: 8px;">Enter your first name to begin.</p>
+    <input type="text" id="student-name-input" placeholder="Your Name" aria-label="Enter your name">
+    <button class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1.1rem;" onclick="submitName()">Start Game 🚀</button>
+  </div>
+</div>
+
 <div class="container">
   <!-- TEACHER SETUP VIEW -->
   <div id="teacher-view">
@@ -162,9 +178,22 @@
 </div>
 
 <script>
-  const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR_qVYjge6yFN9mLytjck09G66BTF8bM5_PCrcoQ5G8z-ilwEJ3L-uYLOEqzf8hAPCAFRyV8fRR0Ho0/pub?gid=0&single=true&output=csv"; 
+  // =========================================================
+  // ⬇️ DATABASE CONNECTIONS (DO NOT DELETE) ⬇️
+  // =========================================================
+  const SHEET_CSV_URL = "PASTE_YOUR_LINK_HERE"; // YOUR CSV LINK GOES HERE
+  const TRACKING_URL = "https://script.google.com/macros/s/AKfycbyL4Ws4DK8UH_VbTE_4ENW9vmy7WRkIly71NfPLDm2CF3oeBf91jUOTkXuSJtJWiWMEHQ/exec";
+  // =========================================================
+
   let gameData = []; 
   let sortableInstances = []; 
+  
+  // Tracking & Adaptive Variables
+  let studentName = "";
+  let attemptCount = 0;
+  let currentGameId = "";
+  let ifStuckGoTo = "";
+  let ifPerfectGoTo = "";
 
   // --- INITIAL SETUP & SHEET FETCHING ---
   function init() {
@@ -172,7 +201,13 @@
     const gameId = urlParams.get('game');
 
     if (gameId && SHEET_CSV_URL !== "PASTE_YOUR_LINK_HERE") {
-      loadGameFromSheet(gameId);
+      currentGameId = gameId;
+      document.getElementById('teacher-view').style.display = 'none';
+      document.getElementById('name-modal').style.display = 'flex';
+      // Allows pressing 'Enter' to submit name
+      document.getElementById('student-name-input').addEventListener('keypress', function (e) {
+          if (e.key === 'Enter') submitName();
+      });
     } else {
       addBuilderRow('Ice melts when heat energy is applied.', '#D1FAE5', 'Topic Focus');
       addBuilderRow('The heat causes the water molecules to vibrate faster.', '#FEF3C7', 'Explanation');
@@ -180,11 +215,33 @@
     }
   }
 
+  // --- LOGIN LOGIC ---
+  function submitName() {
+    const nameInput = document.getElementById('student-name-input').value.trim();
+    if (!nameInput) {
+      alert("Please enter your name to play!");
+      return;
+    }
+    studentName = nameInput;
+    document.getElementById('name-modal').style.display = 'none';
+    loadGameFromSheet(currentGameId);
+  }
+
+  // --- SEND LIVE DATA ---
+  function sendTrackingData(status, details) {
+    if (!studentName) return; // Don't track if the teacher is just testing it manually
+    
+    // Construct the invisible URL with data parameters
+    const url = `${TRACKING_URL}?name=${encodeURIComponent(studentName)}&gameId=${encodeURIComponent(currentGameId)}&attempt=${attemptCount}&status=${encodeURIComponent(status)}&details=${encodeURIComponent(details)}`;
+    
+    // Send it silently in the background
+    fetch(url, { mode: 'no-cors' }).catch(err => console.error("Tracking failed secretly:", err));
+  }
+
   // --- GOOGLE SHEET LOGIC ---
   async function loadGameFromSheet(targetGameId) {
     try {
-      document.getElementById('teacher-view').style.display = 'none';
-      document.body.insertAdjacentHTML('beforeend', '<div id="loading-text" style="text-align:center; margin-top: 2rem;">⏳ Loading your game from Google Sheets...</div>');
+      document.body.insertAdjacentHTML('beforeend', '<div id="loading-text" style="text-align:center; margin-top: 2rem;">⏳ Loading your game...</div>');
 
       const response = await fetch(SHEET_CSV_URL);
       const csvText = await response.text();
@@ -197,6 +254,10 @@
       const textIdx = headers.indexOf('text');
       const colorIdx = headers.indexOf('colour');
       const labelIdx = headers.indexOf('label');
+      
+      // Look for the adaptive branching columns (safe if missing)
+      const stuckIdx = headers.indexOf('if_stuck_go_to');
+      const perfectIdx = headers.indexOf('if_perfect_go_to');
 
       if (gameIdIdx === -1) throw new Error("Missing Game_ID column");
 
@@ -217,6 +278,10 @@
             document.getElementById('manual-title').value = rows[i][titleIdx].trim();
           }
 
+          // Capture adaptive branching targets if they exist on the first row
+          if (stuckIdx !== -1 && rows[i][stuckIdx] && !ifStuckGoTo) ifStuckGoTo = rows[i][stuckIdx].trim();
+          if (perfectIdx !== -1 && rows[i][perfectIdx] && !ifPerfectGoTo) ifPerfectGoTo = rows[i][perfectIdx].trim();
+
           const type = rows[i][typeIdx] ? rows[i][typeIdx].trim().toLowerCase() : '';
           const text = rows[i][textIdx] ? rows[i][textIdx].trim() : '';
           const color = rows[i][colorIdx] ? rows[i][colorIdx].trim() : '#E5E7EB';
@@ -235,13 +300,13 @@
       if (foundGame) {
         startGame(); 
       } else {
-        alert("Oops! Game ID '" + targetGameId + "' was not found in the spreadsheet.");
+        alert("Oops! Game ID '" + targetGameId + "' was not found.");
         resetTeacher();
       }
     } catch (e) {
       console.error(e);
       document.getElementById('loading-text')?.remove();
-      alert("Could not load from Google Sheets. Ensure your link is correct and ends in 'output=csv'");
+      alert("Could not load game. Ensure your link is correct.");
       resetTeacher();
     }
   }
@@ -359,7 +424,7 @@
       paragraphBox.innerHTML += `
         <div class="slot-row">
           <div class="slot-label" style="background-color: ${item.color};" aria-label="Slot for ${item.label}">${item.label}</div>
-          <div class="slot-dropzone" data-target-id="${item.id}" data-color="${item.color}" aria-label="Drop zone"></div>
+          <div class="slot-dropzone" data-target-id="${item.id}" data-color="${item.color}" data-label="${item.label}" aria-label="Drop zone"></div>
         </div>
       `;
     });
@@ -406,27 +471,44 @@
     document.getElementById('student-view').style.display = 'block';
   }
 
-  // --- CHECKING LOGIC ---
+  // --- CHECKING & TRACKING LOGIC ---
   function checkAnswer() {
+    attemptCount++; // Increase the attempt tracker
     let allPerfect = true;
-    const slots = document.querySelectorAll('.slot-dropzone');
+    let detailsArray = []; // To capture what they put where for the teacher
 
+    const slots = document.querySelectorAll('.slot-dropzone');
     document.querySelectorAll('.tick-mark').forEach(el => el.remove());
 
     slots.forEach(slot => {
       const targetId = parseInt(slot.dataset.targetId);
+      const slotLabel = slot.dataset.label;
       const childItem = slot.children[0];
 
       if (childItem) {
         const itemId = parseInt(childItem.dataset.id);
         if (itemId === targetId) {
+          // Correct item in correct slot
           const tick = document.createElement('span');
           tick.className = 'tick-mark'; tick.textContent = '✔️'; tick.setAttribute('aria-label', 'Correct');
           childItem.appendChild(tick);
-        } else allPerfect = false;
-      } else allPerfect = false;
+          detailsArray.push(`[${slotLabel}: Correct]`);
+        } else {
+          // Wrong item in slot
+          allPerfect = false;
+          detailsArray.push(itemId === -1 ? `[${slotLabel}: Put Trick Item]` : `[${slotLabel}: Wrong Part]`);
+        }
+      } else {
+        // Slot left empty
+        allPerfect = false;
+        detailsArray.push(`[${slotLabel}: Empty]`);
+      }
     });
 
+    // Send the live data to the Google Sheet!
+    sendTrackingData(allPerfect ? "Perfect" : "Needs Work", detailsArray.join(" | "));
+
+    // Handle feedback and adaptive branching
     if (allPerfect) {
       slots.forEach(slot => {
         const childItem = slot.children[0];
@@ -434,7 +516,25 @@
         childItem.style.backgroundColor = designatedColor;
         childItem.style.borderColor = designatedColor;
       });
-      setTimeout(() => alert("🎉 Perfect! You've sequenced the parts structurally!"), 150);
+      
+      // Delay slightly so they can see the colors reveal before bouncing them
+      setTimeout(() => {
+        if (attemptCount === 1 && ifPerfectGoTo) {
+          alert("🎉 Nailed it on the very first try! Let's try an extension challenge.");
+          window.location.search = `?game=${ifPerfectGoTo}`; // Branch to harder game
+        } else {
+          alert("🎉 Perfect! You've sequenced the parts structurally!");
+        }
+      }, 300);
+
+    } else {
+      // If they are struggling and have hit 3 attempts, branch to the easier foundational game
+      if (attemptCount >= 3 && ifStuckGoTo) {
+        setTimeout(() => {
+          alert("This one is a bit tricky! Let's build up to it with a foundational puzzle.");
+          window.location.search = `?game=${ifStuckGoTo}`; // Branch to easier game
+        }, 150);
+      }
     }
   }
 

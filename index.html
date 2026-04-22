@@ -33,8 +33,8 @@
   .btn-outline { background: transparent; border: 2px solid var(--color-border); color: var(--color-text); }
   .btn-outline:hover { border-color: var(--color-primary); color: var(--color-primary); }
 
-  /* --- Modals (Name Input) --- */
-  #name-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+  /* --- Modals --- */
+  .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
   .modal-content { background: white; padding: 2.5rem; border-radius: 12px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.2); max-width: 400px; width: 90%; }
   .modal-content input { width: 100%; padding: 12px; margin: 15px 0; border: 2px solid var(--color-border); border-radius: 6px; font-size: 1.1rem; text-align: center;}
   .modal-content input:focus { outline: none; border-color: var(--color-primary); }
@@ -114,12 +114,21 @@
 <body>
 
 <!-- STUDENT NAME OVERLAY -->
-<div id="name-modal">
+<div id="name-modal" class="modal-overlay">
   <div class="modal-content">
     <h2>Kia ora! 👋</h2>
     <p style="color: #6B7280; margin-top: 8px;">Enter your first name to begin.</p>
     <input type="text" id="student-name-input" placeholder="Your Name" aria-label="Enter your name">
     <button class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1.1rem;" onclick="submitName()">Start Game 🚀</button>
+  </div>
+</div>
+
+<!-- STUDENT HINT OVERLAY -->
+<div id="hint-modal" class="modal-overlay">
+  <div class="modal-content">
+    <h2 style="color: #D97706;">💡 Quick Hint</h2>
+    <p id="hint-text" style="font-size: 1.1rem; margin: 15px 0; line-height: 1.5; color: #4B5563;"></p>
+    <button class="btn btn-outline" style="width: 100%; padding: 12px; font-size: 1.1rem;" onclick="closeHintModal()">Got it, let me try again</button>
   </div>
 </div>
 
@@ -131,6 +140,7 @@
     
     <div class="section-title">Paragraph Details</div>
     <input type="text" id="manual-title" class="title-input" placeholder="Enter paragraph title (e.g., Introduction, Art History Model)" aria-label="Enter paragraph title">
+    <input type="text" id="manual-hint" class="title-input" placeholder="Enter a custom hint if they get it wrong (optional)" aria-label="Enter custom hint">
 
     <div class="section-title">Correct Paragraph Sequence</div>
     <div id="builder-container">
@@ -181,7 +191,7 @@
   // =========================================================
   // ⬇️ DATABASE CONNECTIONS (DO NOT DELETE) ⬇️
   // =========================================================
-  const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR_qVYjge6yFN9mLytjck09G66BTF8bM5_PCrcoQ5G8z-ilwEJ3L-uYLOEqzf8hAPCAFRyV8fRR0Ho0/pub?gid=0&single=true&output=csv"; // YOUR CSV LINK GOES HERE
+  const SHEET_CSV_URL = "PASTE_YOUR_LINK_HERE"; // YOUR CSV LINK GOES HERE
   const TRACKING_URL = "https://script.google.com/macros/s/AKfycbyL4Ws4DK8UH_VbTE_4ENW9vmy7WRkIly71NfPLDm2CF3oeBf91jUOTkXuSJtJWiWMEHQ/exec";
   // =========================================================
 
@@ -194,6 +204,7 @@
   let currentGameId = "";
   let ifStuckGoTo = "";
   let ifPerfectGoTo = "";
+  let currentHint = ""; // Stores the custom hint
 
   // --- INITIAL SETUP & SHEET FETCHING ---
   function init() {
@@ -204,7 +215,7 @@
       currentGameId = gameId;
       document.getElementById('teacher-view').style.display = 'none';
       document.getElementById('name-modal').style.display = 'flex';
-      // Allows pressing 'Enter' to submit name
+      
       document.getElementById('student-name-input').addEventListener('keypress', function (e) {
           if (e.key === 'Enter') submitName();
       });
@@ -229,12 +240,8 @@
 
   // --- SEND LIVE DATA ---
   function sendTrackingData(status, details) {
-    if (!studentName) return; // Don't track if the teacher is just testing it manually
-    
-    // Construct the invisible URL with data parameters
+    if (!studentName) return; 
     const url = `${TRACKING_URL}?name=${encodeURIComponent(studentName)}&gameId=${encodeURIComponent(currentGameId)}&attempt=${attemptCount}&status=${encodeURIComponent(status)}&details=${encodeURIComponent(details)}`;
-    
-    // Send it silently in the background
     fetch(url, { mode: 'no-cors' }).catch(err => console.error("Tracking failed secretly:", err));
   }
 
@@ -250,12 +257,12 @@
       const headers = rows[0].map(h => h.trim().toLowerCase());
       const gameIdIdx = headers.indexOf('game_id');
       const titleIdx = headers.indexOf('title');
+      const hintIdx = headers.indexOf('hint'); // New Hint Column
       const typeIdx = headers.indexOf('type');
       const textIdx = headers.indexOf('text');
       const colorIdx = headers.indexOf('colour');
       const labelIdx = headers.indexOf('label');
       
-      // Look for the adaptive branching columns (safe if missing)
       const stuckIdx = headers.indexOf('if_stuck_go_to');
       const perfectIdx = headers.indexOf('if_perfect_go_to');
 
@@ -264,6 +271,7 @@
       document.getElementById('builder-container').innerHTML = '';
       document.getElementById('distractor-container').innerHTML = '';
       document.getElementById('manual-title').value = '';
+      document.getElementById('manual-hint').value = '';
 
       let foundGame = false;
 
@@ -278,7 +286,12 @@
             document.getElementById('manual-title').value = rows[i][titleIdx].trim();
           }
 
-          // Capture adaptive branching targets if they exist on the first row
+          // Capture the custom hint if it exists
+          if (hintIdx !== -1 && rows[i][hintIdx] && !currentHint) {
+            currentHint = rows[i][hintIdx].trim();
+            document.getElementById('manual-hint').value = currentHint;
+          }
+
           if (stuckIdx !== -1 && rows[i][stuckIdx] && !ifStuckGoTo) ifStuckGoTo = rows[i][stuckIdx].trim();
           if (perfectIdx !== -1 && rows[i][perfectIdx] && !ifPerfectGoTo) ifPerfectGoTo = rows[i][perfectIdx].trim();
 
@@ -362,6 +375,9 @@
     const buildRows = document.querySelectorAll('#builder-container .builder-row');
     const distractorRows = document.querySelectorAll('#distractor-container .builder-row');
     const customTitle = document.getElementById('manual-title').value.trim();
+    
+    // Lock in the manual hint if the teacher typed one in
+    currentHint = document.getElementById('manual-hint').value.trim();
 
     if (buildRows.length < 2) {
       alert("Please add at least 2 correct parts to play.");
@@ -389,7 +405,6 @@
       if (text) pool.push({ id: -1, text: text, isDistractor: true });
     });
 
-    // Handle dynamic subtitle warning if a distractor exists
     const hasDistractors = pool.some(item => item.isDistractor);
     const subtitleEl = document.getElementById('student-subtitle');
     if (hasDistractors) {
@@ -398,7 +413,6 @@
       subtitleEl.innerHTML = "Drag the parts from the pool into the correct structural slots.";
     }
 
-    // Hide the 'Edit Setup' button if loaded via a Google Sheet link
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('game')) {
       document.getElementById('edit-setup-btn').style.display = 'none';
@@ -473,9 +487,9 @@
 
   // --- CHECKING & TRACKING LOGIC ---
   function checkAnswer() {
-    attemptCount++; // Increase the attempt tracker
+    attemptCount++; 
     let allPerfect = true;
-    let detailsArray = []; // To capture what they put where for the teacher
+    let detailsArray = []; 
 
     const slots = document.querySelectorAll('.slot-dropzone');
     document.querySelectorAll('.tick-mark').forEach(el => el.remove());
@@ -488,27 +502,22 @@
       if (childItem) {
         const itemId = parseInt(childItem.dataset.id);
         if (itemId === targetId) {
-          // Correct item in correct slot
           const tick = document.createElement('span');
           tick.className = 'tick-mark'; tick.textContent = '✔️'; tick.setAttribute('aria-label', 'Correct');
           childItem.appendChild(tick);
           detailsArray.push(`[${slotLabel}: Correct]`);
         } else {
-          // Wrong item in slot
           allPerfect = false;
           detailsArray.push(itemId === -1 ? `[${slotLabel}: Put Trick Item]` : `[${slotLabel}: Wrong Part]`);
         }
       } else {
-        // Slot left empty
         allPerfect = false;
         detailsArray.push(`[${slotLabel}: Empty]`);
       }
     });
 
-    // Send the live data to the Google Sheet!
     sendTrackingData(allPerfect ? "Perfect" : "Needs Work", detailsArray.join(" | "));
 
-    // Handle feedback and adaptive branching
     if (allPerfect) {
       slots.forEach(slot => {
         const childItem = slot.children[0];
@@ -517,25 +526,38 @@
         childItem.style.borderColor = designatedColor;
       });
       
-      // Delay slightly so they can see the colors reveal before bouncing them
       setTimeout(() => {
         if (attemptCount === 1 && ifPerfectGoTo) {
           alert("🎉 Nailed it on the very first try! Let's try an extension challenge.");
-          window.location.search = `?game=${ifPerfectGoTo}`; // Branch to harder game
+          window.location.search = `?game=${ifPerfectGoTo}`; 
         } else {
           alert("🎉 Perfect! You've sequenced the parts structurally!");
         }
       }, 300);
 
     } else {
-      // If they are struggling and have hit 3 attempts, branch to the easier foundational game
+      // If wrong...
       if (attemptCount >= 3 && ifStuckGoTo) {
+        // ...and they hit attempt 3, bounce them to the easy game
         setTimeout(() => {
           alert("This one is a bit tricky! Let's build up to it with a foundational puzzle.");
-          window.location.search = `?game=${ifStuckGoTo}`; // Branch to easier game
+          window.location.search = `?game=${ifStuckGoTo}`; 
         }, 150);
+      } else if (currentHint) {
+        // ...otherwise, show the custom hint modal!
+        showHintModal();
       }
     }
+  }
+  
+  // --- HINT MODAL CONTROLS ---
+  function showHintModal() {
+    document.getElementById('hint-text').innerHTML = currentHint;
+    document.getElementById('hint-modal').style.display = 'flex';
+  }
+  
+  function closeHintModal() {
+    document.getElementById('hint-modal').style.display = 'none';
   }
 
   function clearFeedback() {

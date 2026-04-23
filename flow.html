@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Semantic Paragraph Builder</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PapaParse for reading Google Sheets CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <!-- SortableJS for drag and drop -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+
+    <style>
+        body { background-color: #f3f4f6; font-family: 'Segoe UI', system-ui, sans-serif; }
+        
+        /* The Live Preview Panel */
+        .live-preview-panel {
+            background: #ffffff;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            min-height: 100px;
+        }
+        .live-preview-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px;
+        }
+        .live-text-flow {
+            font-size: 18px;
+            line-height: 2;
+            color: #111827;
+        }
+        
+        /* The magic box-decoration-break from your Slide Builder */
+        .flow-span {
+            border-radius: 4px;
+            box-decoration-break: clone;
+            -webkit-box-decoration-break: clone;
+            display: inline;
+            transition: background-color 0.5s ease;
+            padding: 2px 6px;
+        }
+        .flow-span.placeholder {
+            color: #9ca3af;
+            border-bottom: 2px dashed #d1d5db;
+            padding: 0 4px;
+            margin: 0 4px;
+        }
+
+        /* Drag and Drop Board */
+        .board-container { display: flex; gap: 20px; max-width: 900px; margin: 0 auto; }
+        .labels-column { display: flex; flex-direction: column; gap: 12px; width: 200px; flex-shrink: 0; }
+        .slots-column { display: flex; flex-direction: column; gap: 12px; flex-grow: 1; }
+        
+        .semantic-label {
+            padding: 16px;
+            border-radius: 8px;
+            font-weight: bold;
+            text-align: center;
+            border: 2px solid;
+            background-color: transparent;
+            transition: background-color 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 60px;
+        }
+        
+        .slot {
+            border: 2px dashed #cbd5e1;
+            border-radius: 8px;
+            min-height: 60px;
+            background-color: #f8fafc;
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            transition: border-color 0.2s;
+        }
+        .slot.has-item { border: 2px solid #e2e8f0; background-color: white; }
+        
+        .pool-area {
+            display: flex; flex-wrap: wrap; gap: 12px; padding: 20px;
+            background: white; border-radius: 8px; min-height: 100px; margin-top: 30px;
+            border: 2px solid #e5e7eb; justify-content: center;
+        }
+        
+        .part-card {
+            background: white; border: 1px solid #cbd5e1; padding: 12px 20px;
+            border-radius: 6px; cursor: grab; font-size: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: transform 0.1s, box-shadow 0.1s; user-select: none;
+        }
+        .part-card:active { cursor: grabbing; transform: scale(0.98); }
+        .part-card.distractor { border-color: #f87171; border-width: 2px; }
+        
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
+            z-index: 50; opacity: 0; pointer-events: none; transition: opacity 0.3s;
+        }
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
+        .modal-content {
+            background: white; padding: 30px; border-radius: 12px; max-width: 500px;
+            width: 90%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); transform: translateY(20px);
+            transition: transform 0.3s; text-align: center;
+        }
+        .modal-overlay.active .modal-content { transform: translateY(0); }
+    </style>
+</head>
+<body class="p-6">
+
+    <div id="setup-screen" class="max-w-md mx-auto bg-white p-8 rounded-xl shadow-md mt-10">
+        <h1 class="text-2xl font-bold text-gray-800 mb-6 text-center">Student Sign In</h1>
+        <input type="text" id="student-name" placeholder="Enter your first name" class="w-full p-3 border rounded-lg mb-4 focus:ring-2 focus:ring-blue-500 outline-none">
+        <button onclick="startSession()" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition">Start Game</button>
+    </div>
+
+    <div id="game-screen" class="hidden max-w-4xl mx-auto">
+        <div class="flex justify-between items-center mb-6">
+            <h1 id="game-title" class="text-2xl font-bold text-gray-800">Loading Game...</h1>
+            <div class="text-gray-500 font-medium">Student: <span id="display-name" class="text-blue-600"></span></div>
+        </div>
+
+        <p id="distractor-warning" class="text-red-600 font-bold mb-4 hidden">⚠️ Warning: There are extra distractor blocks that do not belong in the paragraph!</p>
+
+        <!-- NEW: Live Preview Panel -->
+        <div class="live-preview-panel">
+            <div class="live-preview-title">Live Paragraph Preview</div>
+            <div id="live-text-flow" class="live-text-flow">
+                <!-- Javascript will build the live text here -->
+            </div>
+        </div>
+
+        <div class="board-container">
+            <div class="labels-column" id="labels-column"></div>
+            <div class="slots-column" id="slots-column"></div>
+        </div>
+
+        <h3 class="text-center font-bold text-gray-500 mt-8 mb-2 uppercase tracking-wide">Drag from here</h3>
+        <div class="pool-area" id="pool-area"></div>
+
+        <div class="mt-8 text-center">
+            <button onclick="checkAnswer()" class="bg-green-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-green-700 transition shadow-lg text-lg">Check Answer</button>
+        </div>
+    </div>
+
+    <!-- The Custom Hint Modal -->
+    <div id="hint-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="text-4xl mb-4">💡</div>
+            <h2 class="text-xl font-bold text-gray-800 mb-2">Not quite right yet!</h2>
+            <p id="hint-text" class="text-gray-600 mb-6 text-lg leading-relaxed"></p>
+            <button onclick="closeHintModal()" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-700 transition">Got it, let me try again</button>
+        </div>
+    </div>
+
+<script>
+    // ==========================================
+    // ⚠️ PASTE YOUR TWO LINKS IN THESE QUOTES!
+    // ==========================================
+    const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR_qVYjge6yFN9mLytjck09G66BTF8bM5_PCrcoQ5G8z-ilwEJ3L-uYLOEqzf8hAPCAFRyV8fRR0Ho0/pub?gid=0&single=true&output=csv";
+    const TRACKING_URL  = "https://script.google.com/macros/s/AKfycbyL4Ws4DK8UH_VbTE_4ENW9vmy7WRkIly71NfPLDm2CF3oeBf91jUOTkXuSJtJWiWMEHQ/exec";
+
+    let currentGameId = new URLSearchParams(window.location.search).get('game');
+    let studentName = "";
+    let attemptCount = 0;
+    let gameData = [];
+    let requiredSlotsCount = 0;
+    
+    // Sortable instances
+    let sortableSlots = [];
+    let sortablePool = null;
+
+    function startSession() {
+        const nameInput = document.getElementById('student-name').value.trim();
+        if (!nameInput) { alert("Please enter your name."); return; }
+        studentName = nameInput;
+        document.getElementById('setup-screen').classList.add('hidden');
+        document.getElementById('game-screen').classList.remove('hidden');
+        document.getElementById('display-name').textContent = studentName;
+        loadGameData();
+    }
+
+    function loadGameData() {
+        if (!currentGameId) {
+            document.getElementById('game-title').textContent = "Error: No game ID provided in URL.";
+            return;
+        }
+
+        Papa.parse(SHEET_CSV_URL, {
+            download: true,
+            header: true,
+            complete: function(results) {
+                const rows = results.data.filter(row => row.Game_ID === currentGameId);
+                if (rows.length === 0) {
+                    document.getElementById('game-title').textContent = "Error: Game not found.";
+                    return;
+                }
+                
+                document.getElementById('game-title').textContent = rows[0].Title || "Paragraph Game";
+                gameData = rows;
+                renderGame();
+            }
+        });
+    }
+
+    function renderGame() {
+        const labelsCol = document.getElementById('labels-column');
+        const slotsCol = document.getElementById('slots-column');
+        const poolArea = document.getElementById('pool-area');
+        
+        labelsCol.innerHTML = ''; slotsCol.innerHTML = ''; poolArea.innerHTML = '';
+        requiredSlotsCount = 0;
+        let poolItems = [];
+        let hasDistractors = false;
+
+        gameData.forEach((row, index) => {
+            if (row.Type === 'Part') {
+                requiredSlotsCount++;
+                
+                // Labels
+                const label = document.createElement('div');
+                label.className = 'semantic-label';
+                label.style.borderColor = row.Colour || '#000';
+                label.textContent = row.Label;
+                label.setAttribute('data-target-color', row.Colour); // Store colour for blooming
+                labelsCol.appendChild(label);
+
+                // Drop Slots
+                const slot = document.createElement('div');
+                slot.className = 'slot';
+                slot.setAttribute('data-index', index);
+                slot.setAttribute('data-hint', row.Hint || "");
+                slotsCol.appendChild(slot);
+
+                // Add to pool
+                poolItems.push(createCard(row.Text, index, row.Colour));
+            } else if (row.Type === 'Distractor') {
+                hasDistractors = true;
+                poolItems.push(createCard(row.Text, 'distractor', 'transparent', true));
+            }
+        });
+
+        if (hasDistractors) {
+            document.getElementById('distractor-warning').classList.remove('hidden');
+        }
+
+        // Shuffle pool
+        poolItems.sort(() => Math.random() - 0.5).forEach(card => poolArea.appendChild(card));
+
+        setupDragAndDrop();
+        updateLivePreview(); // Build the empty lines preview
+    }
+
+    function createCard(text, id, colour, isDistractor = false) {
+        const card = document.createElement('div');
+        card.className = 'part-card' + (isDistractor ? ' distractor' : '');
+        card.textContent = text;
+        card.setAttribute('data-id', id);
+        card.setAttribute('data-color', colour); // Saved for the text flow bloom
+        
+        card.onclick = function() {
+            if (this.parentElement.classList.contains('slot')) {
+                document.getElementById('pool-area').appendChild(this);
+                updateLivePreview();
+            }
+        };
+        return card;
+    }
+
+    function setupDragAndDrop() {
+        const pool = document.getElementById('pool-area');
+        const slots = document.querySelectorAll('.slot');
+
+        sortablePool = new Sortable(pool, {
+            group: 'shared',
+            animation: 150,
+            onEnd: updateLivePreview // Update preview when dropping finishes
+        });
+
+        slots.forEach(slot => {
+            sortableSlots.push(new Sortable(slot, {
+                group: 'shared',
+                animation: 150,
+                max: 1, // Only one block per slot
+                onAdd: function(evt) {
+                    if (evt.to.children.length > 1) {
+                        const existingItem = evt.to.children[0];
+                        if (existingItem !== evt.item) { pool.appendChild(existingItem); }
+                    }
+                    evt.to.classList.add('has-item');
+                },
+                onRemove: function(evt) { evt.from.classList.remove('has-item'); },
+                onEnd: updateLivePreview // Update preview when sorting
+            }));
+        });
+    }
+
+    // NEW FUNCTION: Builds the real-time paragraph
+    function updateLivePreview() {
+        const flowContainer = document.getElementById('live-text-flow');
+        let htmlContent = '';
+        
+        const slots = document.querySelectorAll('.slot');
+        slots.forEach(slot => {
+            const card = slot.querySelector('.part-card');
+            if (card) {
+                const text = card.textContent;
+                const colour = card.getAttribute('data-color') || 'transparent';
+                // Starts transparent, will be styled on win
+                htmlContent += `<span class="flow-span" data-color="${colour}" style="background-color: transparent;">${text}&nbsp;</span> `;
+            } else {
+                htmlContent += `<span class="flow-span placeholder">_______&nbsp;</span> `;
+            }
+        });
+        
+        flowContainer.innerHTML = htmlContent.trim();
+    }
+
+    function checkAnswer() {
+        attemptCount++;
+        const slots = document.querySelectorAll('.slot');
+        let allCorrect = true;
+        let incorrectDetails = [];
+        let firstHintFound = null;
+
+        let placedCount = 0;
+        slots.forEach(slot => {
+            if (slot.children.length > 0) placedCount++;
+        });
+
+        if (placedCount < requiredSlotsCount) {
+            alert("Please fill all the slots before checking!");
+            return;
+        }
+
+        slots.forEach((slot, position) => {
+            const card = slot.children[0];
+            const correctId = slot.getAttribute('data-index');
+            const hintText = slot.getAttribute('data-hint');
+
+            if (!card || card.getAttribute('data-id') !== correctId) {
+                allCorrect = false;
+                const studentPlaced = card ? card.textContent.substring(0, 20) + "..." : "Empty";
+                incorrectDetails.push(`Slot ${position + 1} wrong (Put: ${studentPlaced})`);
+                
+                // Grab the first available hint for an incorrect slot
+                if (!firstHintFound && hintText && hintText.trim() !== "") {
+                    firstHintFound = hintText;
+                }
+            }
+        });
+
+        if (allCorrect) {
+            // BLOOM: Light up the Live Paragraph!
+            const flowSpans = document.querySelectorAll('.flow-span');
+            flowSpans.forEach(span => {
+                if(!span.classList.contains('placeholder')) {
+                    const bloomColor = span.getAttribute('data-color');
+                    span.style.backgroundColor = bloomColor;
+                }
+            });
+
+            // BLOOM: Light up the Left Labels
+            document.querySelectorAll('.semantic-label').forEach(label => {
+                label.style.backgroundColor = label.getAttribute('data-target-color');
+                label.style.color = "white"; 
+                label.style.textShadow = "1px 1px 2px rgba(0,0,0,0.5)";
+            });
+
+            sendTrackingData("Success", "Completed perfectly");
+            
+            setTimeout(() => {
+                alert("Brilliant! You got it completely right! 🎉");
+                const perfectGoTo = gameData[0].If_Perfect_Go_To;
+                if (perfectGoTo) {
+                    window.location.href = `?game=${perfectGoTo}&v=${Math.random()}`;
+                }
+            }, 500);
+
+        } else {
+            sendTrackingData("Try Again", incorrectDetails.join(" | "));
+            
+            // Check if we need to show a custom hint or adapt down
+            if (attemptCount >= 3 && gameData[0].If_Stuck_Go_To) {
+                alert("This one is tricky! Let's try an easier one first.");
+                window.location.href = `?game=${gameData[0].If_Stuck_Go_To}&v=${Math.random()}`;
+            } else if (firstHintFound) {
+                showHintModal(firstHintFound);
+            }
+        }
+    }
+
+    function showHintModal(hintText) {
+        document.getElementById('hint-text').textContent = hintText;
+        document.getElementById('hint-modal').classList.add('active');
+    }
+
+    function closeHintModal() {
+        document.getElementById('hint-modal').classList.remove('active');
+    }
+
+    function sendTrackingData(status, details) {
+        if (!TRACKING_URL.startsWith("http")) return; // Skip if URL isn't set
+        
+        const payload = {
+            name: studentName,
+            gameId: currentGameId,
+            attempt: attemptCount,
+            status: status,
+            details: details
+        };
+
+        fetch(TRACKING_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).catch(err => console.error("Tracking error (safe to ignore if no-cors):", err));
+    }
+</script>
+
+</body>
+</html>

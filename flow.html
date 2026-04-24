@@ -410,20 +410,18 @@
     function sendTrackingData(status, details) {
         if (!TRACKING_URL.startsWith("http")) return; // Skip if URL isn't set
         
-        const payload = {
+        const params = new URLSearchParams({
             name: studentName,
             gameId: currentGameId,
             attempt: attemptCount,
             status: status,
-            details: details
-        };
-
-        fetch(TRACKING_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        }).catch(err => console.error("Tracking error (safe to ignore if no-cors):", err));
+            details: details || ""
+        });
+        
+        const finalUrl = TRACKING_URL + "?" + params.toString();
+        
+        fetch(finalUrl, { mode: 'no-cors' })
+            .catch(err => console.error("Tracking error (safe to ignore if no-cors):", err));
     }
 </script>
 

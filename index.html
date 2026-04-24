@@ -324,25 +324,21 @@
             return;
         }
         
-        const payload = {
-            timestamp: new Date().toISOString(),
+        const params = new URLSearchParams({
             name: playerName,
             gameId: currentGameId,
             attempt: attemptCount,
-            status: statusText,
-            details: ""
-        };
-
-        fetch(TRACKING_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        }).then(() => {
-            console.log("Tracking data sent.");
-        }).catch(err => {
-            console.error("Tracking error:", err);
+            status: statusText
         });
+        
+        const finalUrl = TRACKING_URL + "?" + params.toString();
+        
+        fetch(finalUrl, { mode: 'no-cors' })
+            .then(() => {
+                console.log("Tracking data sent successfully!");
+            }).catch(err => {
+                console.error("Tracking error:", err);
+            });
     }
 
     function showHint() {
